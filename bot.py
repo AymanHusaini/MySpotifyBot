@@ -15,7 +15,7 @@ from telegram.ext import (
 import yt_dlp
 
 # --- CONFIGURATION ---
-TELEGRAM_TOKEN = 'MASUKKAN_TELEGRAM_BOT_TOKEN_KAU'
+TELEGRAM_TOKEN = '8764605242:AAF-bkYG6vFKQnOt8LLwweeuYrhEZS7vqnM'
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
