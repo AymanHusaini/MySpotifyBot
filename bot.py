@@ -15,7 +15,7 @@ from telegram.ext import (
 import yt_dlp
 
 # --- CONFIGURATION ---
-TELEGRAM_TOKEN = '8764605242:AAF-bkYG6vFKQnOt8LLwweeuYrhEZS7vqnM'
+TELEGRAM_TOKEN = 'MASUKKAN_TELEGRAM_BOT_TOKEN_KAU'
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -68,14 +68,60 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "Welcome! Your Music Downloader Bot is active.\n\n"
         "📜 **Commands & Usage:**\n"
-        "• Upload a `.csv` file directly to save a playlist.\n"
+        "• Drop a `.csv` file directly from Exportify to save a playlist.\n"
         "• `/importtext <playlist_name>` + line break + paste song list.\n"
         "• `/playlists` - View saved playlists.\n"
         "• `/play <playlist_name>` - Auto-search YT & send MP3s.\n"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-# 1. IMPORT VIA TEXT PASTE
+# 1. IMPORT VIA CSV FILE UPLOAD (CLEANED FOR EXPORTIFY)
+async def handle_csv_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    document = update.message.document
+
+    if not document.file_name.endswith('.csv'):
+        await update.message.reply_text("Please upload a valid `.csv` file!")
+        return
+
+    pl_name = os.path.splitext(document.file_name)[0].lower()
+    await update.message.reply_text(f"⏳ Reading CSV file for playlist `{pl_name}`...")
+
+    file = await context.bot.get_file(document.file_id)
+    file_bytes = await file.download_as_bytearray()
+
+    csv_data = io.StringIO(file_bytes.decode('utf-8'))
+    reader = csv.reader(csv_data)
+    
+    # Skip header row
+    header = next(reader, None)
+
+    conn = sqlite3.connect('playlists.db')
+    cursor = conn.cursor()
+    count = 0
+
+    for row in reader:
+        # Exportify CSV format: Column 1 = Track Name, Column 2 = Artist Name
+        if len(row) >= 3:
+            track_name = row[1].strip()
+            artist_name = row[2].strip()
+            
+            if track_name and artist_name:
+                song_title = f"{artist_name} - {track_name}"
+                cursor.execute('INSERT INTO custom_playlists (user_id, playlist_name, song_title) VALUES (?, ?, ?)',
+                               (user_id, pl_name, song_title))
+                count += 1
+
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(
+        f"✅ Successfully imported {count} tracks into playlist `{pl_name}`!\n"
+        f"Type `/play {pl_name}` to start downloading.",
+        parse_mode="Markdown"
+    )
+
+# 2. IMPORT VIA TEXT PASTE
 async def import_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -110,45 +156,6 @@ async def import_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     await update.message.reply_text(f"✅ Saved {count} songs into `{pl_name}`!", parse_mode="Markdown")
-
-# 2. IMPORT VIA CSV FILE UPLOAD
-async def handle_csv_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    document = update.message.document
-
-    if not document.file_name.endswith('.csv'):
-        await update.message.reply_text("Please upload a valid `.csv` file!")
-        return
-
-    pl_name = os.path.splitext(document.file_name)[0].lower()
-    await update.message.reply_text(f"⏳ Reading CSV file for playlist `{pl_name}`...")
-
-    file = await context.bot.get_file(document.file_id)
-    file_bytes = await file.download_as_bytearray()
-
-    csv_data = io.StringIO(file_bytes.decode('utf-8'))
-    reader = csv.reader(csv_data)
-    
-    # Skip header if present
-    next(reader, None)
-
-    conn = sqlite3.connect('playlists.db')
-    cursor = conn.cursor()
-    count = 0
-
-    for row in reader:
-        if row:
-            # Join columns or take first non-empty text
-            song_title = " - ".join([col.strip() for col in row if col.strip()])
-            if song_title:
-                cursor.execute('INSERT INTO custom_playlists (user_id, playlist_name, song_title) VALUES (?, ?, ?)',
-                               (user_id, pl_name, song_title))
-                count += 1
-
-    conn.commit()
-    conn.close()
-
-    await update.message.reply_text(f"✅ Successfully imported {count} songs into playlist `{pl_name}`!", parse_mode="Markdown")
 
 # 3. LIST PLAYLISTS
 async def list_playlists(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,4 +226,4 @@ if __name__ == '__main__':
 
     print("Bot is running...")
     app.run_polling()
-
+            
